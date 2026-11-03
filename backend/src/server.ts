@@ -3,7 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
-import stockRoutes from './routes/stockRoutes'; // Import des routes de stock
+import stockRoutes from './routes/stockRoutes';
+import invoiceRoutes from './routes/invoiceRoutes'; // Import des routes de facturation
 
 dotenv.config();
 
@@ -38,8 +39,9 @@ app.get('/api/v1/products', async (req: Request, res: Response) => {
   }
 });
 
-// Branchement des routes de gestion de stock et PUMP
+// Branchement des routes de gestion de stock, PUMP et Facturation
 app.use('/api/v1/stock', stockRoutes);
+app.use('/api/v1/invoices', invoiceRoutes);
 
 // Middleware d'erreurs globales
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
