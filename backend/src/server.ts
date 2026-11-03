@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
+import stockRoutes from './routes/stockRoutes'; // Import des routes de stock
 
 dotenv.config();
 
@@ -36,6 +37,9 @@ app.get('/api/v1/products', async (req: Request, res: Response) => {
     res.status(500).json({ success: false, message: 'Erreur lors de la récupération du catalogue.' });
   }
 });
+
+// Branchement des routes de gestion de stock et PUMP
+app.use('/api/v1/stock', stockRoutes);
 
 // Middleware d'erreurs globales
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
