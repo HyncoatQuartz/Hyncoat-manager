@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { pool } from '../server';
-import { removeStockExit } from '../services/stockService';
+import { pool } from '../db';
 import { generateInvoicePDF, InvoiceData } from '../services/pdfService';
 
 const router = Router();
@@ -42,14 +41,14 @@ router.post('/create', async (req: Request, res: Response) => {
         description: item.description,
         quantity: item.quantity,
         unitPrice: item.unitPriceHT,
-        total: total
+        total: total,
       };
     });
 
     const vatMultiplier = 1 + (vatRate / 100);
     const totalTTC = totalHT * vatMultiplier;
 
-    // 2. Insérer ou récupérer le client si nécessaire (simplifié ici avec client_id ou null)
+    // 2. Insérer ou récupérer le client si nécessaire
     let finalClientId = clientId || null;
 
     // 3. Enregistrer l'en-tête de la facture
@@ -63,14 +62,26 @@ router.post('/create', async (req: Request, res: Response) => {
 
     // 4. Enregistrer les lignes de facture et déduire le stock pour chaque article
     for (const item of items) {
-      await client.query(
-        `INSERT INTO invoice_items (invoice_id, product_id, description, quantity, unit_price_ht, total_ht)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [invoiceId, item.productId, item.description, item.quantity, item.unitPriceHT, item.quantity * item.unitPriceHT]
-      );
+      const itemQuery = `
+        INSERT INTO invoice_items (invoice_id, product_id, description, quantity, unit_price_ht, total_ht)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `;
+      await client.query(itemQuery, [
+        invoiceId,
+        item.productId,
+        item.description,
+        item.quantity,
+        item.unitPriceHT,
+        item.quantity * item.unitPriceHT,
+      ]);
 
       // Déduction automatique du stock physique
-      await removeStockExit(item.productId, item.quantity);
+      const updateStockQuery = `
+        UPDATE products 
+        SET stock_real = stock_real - $1 
+        WHERE id = $2
+      `;
+      await client.query(updateStockQuery, [item.quantity, item.productId]);
     }
 
     await client.query('COMMIT');
@@ -85,7 +96,7 @@ router.post('/create', async (req: Request, res: Response) => {
       items: formattedItems,
       totalHT,
       vatRate,
-      totalTTC
+      totalTTC,
     };
 
     const pdfBuffer = await generateInvoicePDF(pdfData);
@@ -98,8 +109,8 @@ router.post('/create', async (req: Request, res: Response) => {
         invoiceNumber,
         totalHT,
         totalTTC,
-        pdfBase64: pdfBuffer.toString('base64') // Permet de télécharger le PDF directement côté front
-      }
+        pdfBase64: pdfBuffer.toString('base64'), // Permet de télécharger le PDF directement côté front
+      },
     });
 
   } catch (error) {
