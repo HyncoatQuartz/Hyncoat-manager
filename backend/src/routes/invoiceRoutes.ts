@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { pool } from '../db';
 import { generateInvoicePDF, InvoiceData } from '../services/pdfService';
 
-const router = Router();
+export const invoiceRouter = Router();
 
 interface InvoiceItemPayload {
   productId: number;
@@ -20,8 +20,7 @@ interface CreateInvoicePayload {
   items: InvoiceItemPayload[];
 }
 
-// Route de création de facture (Enregistrement BDD + Déduction Stock + Génération PDF)
-router.post('/create', async (req: Request, res: Response) => {
+invoiceRouter.post('/create', async (req: Request, res: Response) => {
   const client = await pool.connect();
   try {
     const { clientId, clientName, clientAddress, invoiceNumber, vatRate = 20, items }: CreateInvoicePayload = req.body;
@@ -32,7 +31,6 @@ router.post('/create', async (req: Request, res: Response) => {
 
     await client.query('BEGIN');
 
-    // 1. Calcul des totaux
     let totalHT = 0;
     const formattedItems = items.map(item => {
       const total = item.quantity * item.unitPriceHT;
@@ -48,19 +46,14 @@ router.post('/create', async (req: Request, res: Response) => {
     const vatMultiplier = 1 + (vatRate / 100);
     const totalTTC = totalHT * vatMultiplier;
 
-    // 2. Insérer ou récupérer le client si nécessaire
-    let finalClientId = clientId || null;
-
-    // 3. Enregistrer l'en-tête de la facture
     const invoiceQuery = `
       INSERT INTO invoices (invoice_number, client_id, total_ht, vat_rate, total_ttc, status)
       VALUES ($1, $2, $3, $4, $5, 'PAID')
       RETURNING id, created_at
     `;
-    const invoiceRes = await client.query(invoiceQuery, [invoiceNumber, finalClientId, totalHT, vatRate, totalTTC]);
+    const invoiceRes = await client.query(invoiceQuery, [invoiceNumber, clientId || null, totalHT, vatRate, totalTTC]);
     const invoiceId = invoiceRes.rows[0].id;
 
-    // 4. Enregistrer les lignes de facture et déduire le stock pour chaque article
     for (const item of items) {
       const itemQuery = `
         INSERT INTO invoice_items (invoice_id, product_id, description, quantity, unit_price_ht, total_ht)
@@ -75,7 +68,6 @@ router.post('/create', async (req: Request, res: Response) => {
         item.quantity * item.unitPriceHT,
       ]);
 
-      // Déduction automatique du stock physique
       const updateStockQuery = `
         UPDATE products 
         SET stock_real = stock_real - $1 
@@ -86,11 +78,10 @@ router.post('/create', async (req: Request, res: Response) => {
 
     await client.query('COMMIT');
 
-    // 5. Génération optionnelle du PDF pour retour direct en buffer/base64 si besoin
     const pdfData: InvoiceData = {
       invoiceNumber,
       date: new Date().toLocaleDateString('fr-FR'),
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('fr-FR'), // +30 jours
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('fr-FR'),
       clientName,
       clientAddress,
       items: formattedItems,
@@ -109,7 +100,7 @@ router.post('/create', async (req: Request, res: Response) => {
         invoiceNumber,
         totalHT,
         totalTTC,
-        pdfBase64: pdfBuffer.toString('base64'), // Permet de télécharger le PDF directement côté front
+        pdfBase64: pdfBuffer.toString('base64'),
       },
     });
 
@@ -121,5 +112,3 @@ router.post('/create', async (req: Request, res: Response) => {
     client.release();
   }
 });
-
-export default router;
