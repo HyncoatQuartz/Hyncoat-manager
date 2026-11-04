@@ -2,18 +2,14 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { Pool } from 'pg';
+import { pool } from './db';
 import stockRoutes from './routes/stockRoutes';
-import invoiceRoutes from './routes/invoiceRoutes'; // Import des routes de facturation
+import invoiceRoutes from './routes/invoiceRoutes';
 
 dotenv.config();
 
 const app: Express = express();
 const PORT = process.env.PORT || 5000;
-
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://app_user:app_password@localhost:5432/hyncoat_pos',
-});
 
 app.use(helmet());
 app.use(cors({ origin: '*' }));
